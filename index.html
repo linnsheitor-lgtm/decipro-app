@@ -1080,8 +1080,25 @@
                         <div class="glass-card" id="checkout-card" style="display: none;">
                             <h3 style="margin-bottom: 20px; font-family: 'Outfit';" id="checkout-title">Finalizar Assinatura</h3>
                             
+                            <!-- Loading State -->
+                            <div id="checkout-loading" style="display: none; text-align: center; padding: 30px 0;">
+                                <div class="spinner"></div>
+                                <p style="font-size: 13px; color: var(--text-muted);">Processando sua solicitação de pagamento...</p>
+                            </div>
+
+                            <!-- Checkout Real (Mercado Pago) -->
+                            <div id="checkout-real" style="display: none; text-align: center; padding: 20px 0;">
+                                <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 24px; line-height: 1.5;">Clique no botão abaixo para concluir o pagamento de forma 100% segura via Pix ou Cartão de Crédito no Mercado Pago.</p>
+                                <a id="btn-mercadopago" href="#" target="_blank" class="btn btn-primary" style="width: 100%; text-transform: uppercase; font-weight: 700; background: #009ee3; border-color: #009ee3; color: white; display: flex; align-items: center; justify-content: center; gap: 10px; padding: 14px 20px; font-size: 14px; border-radius: 8px; box-shadow: 0 4px 15px rgba(0, 158, 227, 0.3); text-decoration: none; transition: all 0.3s ease;">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="fill: currentColor;">
+                                        <path d="M12 2C6.48 2 2 6.48 2 12C2 17.52 6.48 22 12 22C17.52 22 22 17.52 22 12C22 6.48 17.52 2 12 2ZM12 20C7.59 20 4 16.41 4 12C4 7.59 7.59 4 12 4C16.41 4 20 7.59 20 12C20 16.41 16.41 20 12 20ZM12 6C8.69 6 6 8.69 6 12C6 15.31 8.69 18 12 18C15.31 18 18 15.31 18 12C18 8.69 15.31 6 12 6Z"/>
+                                    </svg>
+                                    Pagar com Mercado Pago
+                                </a>
+                            </div>
+
                             <!-- Abas de Pagamento (Pix / Cartão) -->
-                            <div style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
+                            <div id="checkout-tabs-bar" style="display: flex; border-bottom: 1px solid var(--border-color); margin-bottom: 20px;">
                                 <button onclick="selectPaymentMethod('pix')" class="match-tab-btn active" id="pay-btn-pix" style="flex: 1; text-align: center; font-weight: 700; border-bottom: 3px solid var(--primary); padding: 10px 0; background: none; border: none; color: var(--text-main); cursor: pointer;">PIX Instantâneo</button>
                                 <button onclick="selectPaymentMethod('cartao')" class="match-tab-btn" id="pay-btn-cartao" style="flex: 1; text-align: center; font-weight: 700; padding: 10px 0; background: none; border: none; color: var(--text-muted); cursor: pointer;">Cartão de Crédito</button>
                             </div>
@@ -1301,6 +1318,10 @@
 
         </main>
     </div>
+
+    <!-- Supabase CDN & Client Setup -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="supabase.js"></script>
 
     <!-- Script de Lógica do App -->
     <script src="app.js"></script>

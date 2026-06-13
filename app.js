@@ -217,81 +217,211 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Processamento de Login
     if (loginForm) {
-        loginForm.addEventListener('submit', (e) => {
+        loginForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const email = document.getElementById('login-email').value.trim();
+            const senha = document.getElementById('login-senha').value;
             
-            // Simulação de login: email 'admin@decipro.com' vira admin, outros viram cliente
-            state.loggedIn = true;
-            state.currentUser = {
-                nome: email.split('@')[0].toUpperCase(),
-                email: email,
-                role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
-            };
-            saveState();
-            updateNavigationVisibility();
+            if (window.DeciproDB && window.DeciproDB.getClient()) {
+                try {
+                    const authData = await window.DeciproDB.auth.login(email, senha);
+                    if (authData && authData.user) {
+                        const client = window.DeciproDB.getClient();
+                        const { data: profile, error } = await client
+                            .from('perfis')
+                            .select('*')
+                            .eq('email', email)
+                            .maybeSingle();
+                        
+                        if (error) throw error;
+                        
+                        const userProfile = profile || {
+                            nome: authData.user.user_metadata?.name || email.split('@')[0].toUpperCase(),
+                            email: email,
+                            role: email === 'admin@decipro.com' ? 'admin' : 'cliente',
+                            plano: 'free',
+                            assinatura_ativa: false,
+                            assinatura_validade: null
+                        };
 
-            alert(`Simulação de login realizada com sucesso! Bem-vindo, ${state.currentUser.nome}.`);
-            
-            const navBanca = document.querySelector('[data-tab="banca"]');
-            if (navBanca) navBanca.click();
+                        state.loggedIn = true;
+                        state.currentUser = {
+                            id: authData.user.id,
+                            nome: userProfile.nome,
+                            email: userProfile.email,
+                            role: userProfile.role || (email === 'admin@decipro.com' ? 'admin' : 'cliente')
+                        };
+                        
+                        state.subscription = {
+                            plan: userProfile.plano || 'free',
+                            active: !!userProfile.assinatura_ativa,
+                            expires: userProfile.assinatura_validade ? new Date(userProfile.assinatura_validade).toLocaleDateString('pt-BR') : '-'
+                        };
+
+                        // Carrega bancas
+                        try {
+                            const bancasDb = await window.DeciproDB.bancas.obterTodas();
+                            if (bancasDb && bancasDb.length > 0) {
+                                state.bancas = bancasDb.map(b => ({
+                                    id: b.id,
+                                    nome: b.nome,
+                                    plataforma: b.plataforma,
+                                    inicial: parseFloat(b.inicial),
+                                    atual: parseFloat(b.atual),
+                                    alavancagem: parseFloat(b.alavancagem_meta),
+                                    prazo: parseInt(b.prazo_dias),
+                                    risco: b.risco,
+                                    data: new Date(b.created_at).toLocaleDateString('pt-BR')
+                                }));
+                                state.activeBancaId = state.bancas[0].id;
+                            }
+                        } catch (eb) {
+                            console.warn("Erro ao obter bancas do Supabase:", eb);
+                        }
+
+                        // Carrega simulações
+                        try {
+                            const simsDb = await window.DeciproDB.simulacoes.obterTodas();
+                            if (simsDb) {
+                                state.simulations = simsDb.map(s => ({
+                                    id: s.id,
+                                    bancaId: s.banca_id,
+                                    partida: s.partida,
+                                    mercado: s.mercado,
+                                    odds: parseFloat(s.odds),
+                                    valor: parseFloat(s.valor),
+                                    status: s.status,
+                                    retorno: parseFloat(s.retorno),
+                                    data: new Date(s.created_at).toLocaleDateString('pt-BR')
+                                }));
+                            }
+                        } catch (es) {
+                            console.warn("Erro ao obter simulações do Supabase:", es);
+                        }
+
+                        saveState();
+                        updateNavigationVisibility();
+                        renderPlanosTab();
+                        renderBancaDetails();
+                        renderAdminTab();
+
+                        alert(`Login realizado com sucesso! Bem-vindo, ${state.currentUser.nome}.`);
+                        
+                        const navBanca = document.querySelector('[data-tab="banca"]');
+                        if (navBanca) navBanca.click();
+                    }
+                } catch (err) {
+                    alert(`⚠️ Erro ao entrar: ${err.message || 'Verifique suas credenciais.'}`);
+                }
+            } else {
+                // Simulação de login padrão (Fallback local)
+                state.loggedIn = true;
+                state.currentUser = {
+                    nome: email.split('@')[0].toUpperCase(),
+                    email: email,
+                    role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
+                };
+                saveState();
+                updateNavigationVisibility();
+
+                alert(`Simulação de login realizada com sucesso! Bem-vindo, ${state.currentUser.nome}.`);
+                
+                const navBanca = document.querySelector('[data-tab="banca"]');
+                if (navBanca) navBanca.click();
+            }
         });
     }
 
     // Processamento de Registro (Cadastro)
     if (signupForm) {
-        signupForm.addEventListener('submit', (e) => {
+        signupForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             const nome = document.getElementById('signup-name').value.trim();
             const email = document.getElementById('signup-email').value.trim();
+            const senha = document.getElementById('signup-senha').value;
             
-            state.loggedIn = true;
-            state.currentUser = {
-                nome: nome,
-                email: email,
-                role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
-            };
-            saveState();
-            updateNavigationVisibility();
+            if (window.DeciproDB && window.DeciproDB.getClient()) {
+                try {
+                    const authData = await window.DeciproDB.auth.registrar(email, senha, nome);
+                    if (authData) {
+                        alert(`🎉 Conta criada com sucesso no Supabase! Por favor, faça login com a conta recém-criada.`);
+                        switchAuthMode(true);
+                    }
+                } catch (err) {
+                    alert(`⚠️ Erro ao criar conta no Supabase: ${err.message}`);
+                }
+            } else {
+                // Simulação de registro local
+                state.loggedIn = true;
+                state.currentUser = {
+                    nome: nome,
+                    email: email,
+                    role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
+                };
+                saveState();
+                updateNavigationVisibility();
 
-            alert(`🎉 Conta criada com sucesso! Bem-vindo, ${nome}.`);
-            
-            const navBanca = document.querySelector('[data-tab="banca"]');
-            if (navBanca) navBanca.click();
+                alert(`🎉 Conta criada com sucesso (Simulado)! Bem-vindo, ${nome}.`);
+                
+                const navBanca = document.querySelector('[data-tab="banca"]');
+                if (navBanca) navBanca.click();
+            }
         });
     }
 
     // Processamento de Login com o Google
     if (btnGoogleLogin) {
-        btnGoogleLogin.addEventListener('click', () => {
-            state.loggedIn = true;
-            state.currentUser = {
-                nome: 'USUÁRIO GOOGLE',
-                email: 'google@decipro.com',
-                role: 'cliente'
-            };
-            saveState();
-            updateNavigationVisibility();
-            
-            alert('Acesso via Google simulado com sucesso!');
-            const navBanca = document.querySelector('[data-tab="banca"]');
-            if (navBanca) navBanca.click();
+        btnGoogleLogin.addEventListener('click', async () => {
+            if (window.DeciproDB && window.DeciproDB.getClient()) {
+                try {
+                    await window.DeciproDB.auth.loginGoogle();
+                } catch (err) {
+                    alert('Erro ao logar com Google: ' + err.message);
+                }
+            } else {
+                state.loggedIn = true;
+                state.currentUser = {
+                    nome: 'USUÁRIO GOOGLE',
+                    email: 'google@decipro.com',
+                    role: 'cliente'
+                };
+                saveState();
+                updateNavigationVisibility();
+                
+                alert('Acesso via Google simulado com sucesso!');
+                const navBanca = document.querySelector('[data-tab="banca"]');
+                if (navBanca) navBanca.click();
+            }
         });
     }
 
     // Processamento de Logout (Sair)
     if (btnLogout) {
-        btnLogout.addEventListener('click', (e) => {
+        btnLogout.addEventListener('click', async (e) => {
             e.preventDefault();
             if (confirm('Tem certeza de que deseja sair da sua conta?')) {
+                if (window.DeciproDB && window.DeciproDB.getClient()) {
+                    try {
+                        await window.DeciproDB.auth.logout();
+                    } catch (err) {
+                        console.warn("Erro ao fazer logout no Supabase:", err);
+                    }
+                }
+                
                 state.loggedIn = false;
                 state.currentUser = null;
+                state.subscription = { plan: 'free', active: false, expires: '-' };
+                state.bancas = [
+                    { id: 'banca_1', nome: 'Banca Principal', plataforma: 'Bet365', inicial: 5000, atual: 5000, alavancagem: 100, prazo: 30, risco: 'moderado', data: new Date().toLocaleDateString('pt-BR') }
+                ];
+                state.activeBancaId = 'banca_1';
+                state.simulations = [];
+                
                 saveState();
-                
-                // Reseta o formulário de login para o modo "Entrar"
                 switchAuthMode(true);
-                
                 updateNavigationVisibility();
+                renderPlanosTab();
+                renderBancaDetails();
                 
                 alert('Você saiu da sua conta.');
                 
@@ -345,15 +475,23 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Excluir uma banca cadastrada
-    const deleteBanca = (id) => {
+    const deleteBanca = async (id) => {
         if (confirm('Tem certeza que deseja excluir esta banca? Todos os dados vinculados a ela serão perdidos.')) {
+            if (window.DeciproDB && window.DeciproDB.getClient() && !id.startsWith('banca_')) {
+                try {
+                    await window.DeciproDB.bancas.excluir(id);
+                } catch (e) {
+                    console.warn("Erro ao deletar banca no Supabase:", e);
+                }
+            }
+
             state.bancas = state.bancas.filter(b => b.id !== id);
 
             // Se a banca deletada era a ativa, ativa a primeira que restou (se houver)
             if (state.bancas.length === 0) {
                 const defaultId = 'banca_' + Date.now();
                 const today = new Date().toLocaleDateString('pt-BR');
-                state.bancas.push({
+                const defaultBanca = {
                     id: defaultId,
                     nome: 'Banca Principal',
                     plataforma: 'Bet365',
@@ -363,8 +501,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     prazo: 30,
                     risco: 'moderado',
                     data: today
-                });
+                };
+                state.bancas.push(defaultBanca);
                 state.activeBancaId = defaultId;
+                if (window.DeciproDB && window.DeciproDB.getClient()) {
+                    await saveBancaToDb(defaultBanca);
+                }
                 alert('Última banca excluída! Uma nova banca padrão foi criada automaticamente para manter o sistema ativo.');
             } else {
                 if (state.activeBancaId === id) {
@@ -568,7 +710,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Salvar nova banca ou atualizar dados
     if (bancaForm) {
-        bancaForm.addEventListener('submit', (e) => {
+        bancaForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
             const nome = document.getElementById('banca-nome').value.trim();
@@ -597,6 +739,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 
                 state.activeBancaId = bancaExistente.id;
                 saveState();
+                await saveBancaToDb(bancaExistente);
                 alert('Dados da banca atualizados e analisados com sucesso!');
                 selectBanca(bancaExistente.id);
             } else if (editingBancaId) {
@@ -613,16 +756,17 @@ document.addEventListener('DOMContentLoaded', () => {
                     b.prazo = prazo;
                     b.risco = risco;
                     
+                    saveState();
+                    await saveBancaToDb(b);
                     alert('Banca atualizada com sucesso!');
                 }
-                saveState();
                 selectBanca(editingBancaId);
             } else {
                 // Modo Criação: Adicionar banca inédita
                 const id = 'banca_' + Date.now();
                 const today = new Date().toLocaleDateString('pt-BR');
 
-                state.bancas.push({
+                const newBanca = {
                     id,
                     plataforma,
                     nome,
@@ -632,10 +776,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     prazo,
                     risco,
                     data: today
-                });
+                };
+                state.bancas.push(newBanca);
                 
                 state.activeBancaId = id;
                 saveState();
+                await saveBancaToDb(newBanca);
                 alert('Nova banca inédita cadastrada com sucesso!');
                 selectBanca(id);
             }
@@ -847,6 +993,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Renderiza a lista de partidas na tela
     const renderMatches = () => {
+        // Se nenhuma partida estiver selecionada e houver partidas buscadas, define a primeira como padrão
+        if (!state.selectedGameForAnalysis && fetchedGames.length > 0) {
+            state.selectedGameForAnalysis = fetchedGames[0];
+            saveState();
+        }
+
         const searchText = searchTextInput.value.toLowerCase();
         
         // Filtra os jogos com base no status e pesquisa de texto
@@ -937,12 +1089,13 @@ document.addEventListener('DOMContentLoaded', () => {
             league.games.forEach(game => {
                 const isFavGame = state.favoritos.jogos.includes(game.id) ? 'active' : '';
                 const liveClass = game.status === 'aovivo' ? 'live' : '';
+                const isSelectedGame = state.selectedGameForAnalysis && state.selectedGameForAnalysis.id === game.id ? 'selected-match' : '';
                 
                 const matchRow = document.createElement('div');
-                matchRow.className = 'match-row';
+                matchRow.className = `match-row ${isSelectedGame}`;
                 matchRow.innerHTML = `
-                    <div class="match-time ${liveClass}">${game.time}</div>
-                    <div class="match-teams">
+                    <div class="match-time ${liveClass}" onclick="selecionarParaAnalise('${game.id}')" style="cursor:pointer;" title="Selecionar Partida para Análise">${game.time}</div>
+                    <div class="match-teams" onclick="selecionarParaAnalise('${game.id}')" style="cursor:pointer;" title="Selecionar Partida para Análise">
                         <div class="match-team ${game.home.winner ? 'winner' : ''}">
                             <img src="${game.home.logo}" alt="Logo">
                             <span class="match-team-name">${game.home.name}</span>
@@ -966,7 +1119,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         </div>
                     </div>
                     <div style="display: flex; align-items: center; gap: 10px; justify-content: flex-end; margin-left: auto;">
-                        <div class="match-fav-icon ${isFavGame}" onclick="toggleFavGame(event, '${game.id}')" title="Favoritar Partida">
+                        <div class="match-fav-icon ${isFavGame}" onclick="toggleFavGame(event, '${game.id}')" title="Marcar como Jogo de Interesse (Selecionados)">
                             <svg viewBox="0 0 24 24"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>
                         </div>
                         <div class="match-analise-icon" onclick="selecionarParaAnalise('${game.id}')" style="cursor:pointer; font-size:16px; opacity:0.8; transition: opacity 0.2s;" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.8'" title="Análise Detalhada (Pré-Jogo & Ao Vivo)">
@@ -1363,7 +1516,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Resolve uma simulação como ganha (Green) ou perdida (Red)
-    window.resolverSimulacao = (simId, isWin) => {
+    window.resolverSimulacao = async (simId, isWin) => {
         const sim = state.simulations.find(s => s.id === simId);
         if (!sim) return;
 
@@ -1426,12 +1579,14 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         saveState();
+        await saveBancaToDb(banca);
+        await saveSimToDb(sim);
         renderBancaDetails();
         syncSimulacaoBanca();
     };
 
     // Exclui ou cancela uma simulação
-    window.excluirSimulacao = (simId) => {
+    window.excluirSimulacao = async (simId) => {
         const sim = state.simulations.find(s => s.id === simId);
         if (!sim) return;
 
@@ -1440,8 +1595,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 const banca = state.bancas.find(b => b.id === sim.bancaId);
                 if (banca) {
                     banca.atual += sim.valor;
+                    await saveBancaToDb(banca);
                 }
                 state.simulations = state.simulations.filter(s => s.id !== simId);
+                if (window.DeciproDB && window.DeciproDB.getClient() && !simId.startsWith('sim_')) {
+                    try {
+                        await window.DeciproDB.simulacoes.excluir(simId);
+                    } catch (e) {
+                        console.warn("Erro ao deletar simulação no Supabase:", e);
+                    }
+                }
                 saveState();
                 renderBancaDetails();
                 syncSimulacaoBanca();
@@ -1450,6 +1613,13 @@ document.addEventListener('DOMContentLoaded', () => {
         } else {
             if (confirm('Deseja remover esta simulação resolvida do histórico? (Não afeta o saldo da banca)')) {
                 state.simulations = state.simulations.filter(s => s.id !== simId);
+                if (window.DeciproDB && window.DeciproDB.getClient() && !simId.startsWith('sim_')) {
+                    try {
+                        await window.DeciproDB.simulacoes.excluir(simId);
+                    } catch (e) {
+                        console.warn("Erro ao deletar simulação no Supabase:", e);
+                    }
+                }
                 saveState();
                 syncSimulacaoBanca();
             }
@@ -1523,7 +1693,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     if (simForm) {
-        simForm.addEventListener('submit', (e) => {
+        simForm.addEventListener('submit', async (e) => {
             e.preventDefault();
 
             const activeBanca = getActiveBanca();
@@ -1570,6 +1740,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             state.simulations.push(newSim);
             saveState();
+            await saveBancaToDb(activeBanca);
+            await saveSimToDb(newSim);
 
             // Reseta controles de validação
             isEnquadramentoApproved = false;
@@ -1728,7 +1900,7 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // Abre a área de checkout para o plano selecionado
-    window.abrirCheckout = (planType) => {
+    window.abrirCheckout = async (planType) => {
         if (!state.loggedIn) {
             alert('⚠️ Para assinar um plano, por favor crie sua conta primeiro!');
             
@@ -1767,6 +1939,62 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Auto scroll to checkout card
             checkoutCard.scrollIntoView({ behavior: 'smooth' });
+
+            // Elementos de checkout
+            const loadingDiv = document.getElementById('checkout-loading');
+            const realDiv = document.getElementById('checkout-real');
+            const tabsBar = document.getElementById('checkout-tabs-bar');
+            const methodPix = document.getElementById('checkout-method-pix');
+            const methodCartao = document.getElementById('checkout-method-cartao');
+            const btnMP = document.getElementById('btn-mercadopago');
+
+            // Coloca em estado de carregamento
+            if (loadingDiv) loadingDiv.style.display = 'block';
+            if (realDiv) realDiv.style.display = 'none';
+            if (tabsBar) tabsBar.style.display = 'none';
+            if (methodPix) methodPix.style.display = 'none';
+            if (methodCartao) methodCartao.style.display = 'none';
+
+            try {
+                // Requisição para a rota de checkout do backend
+                const response = await fetch('/api/checkout', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        email: state.currentUser.email,
+                        planType: planType
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Falha na resposta da API de checkout.');
+                }
+
+                const data = await response.json();
+
+                if (loadingDiv) loadingDiv.style.display = 'none';
+
+                if (data.simulator === false && data.init_point) {
+                    // Modo Real - Mercado Pago
+                    if (realDiv) realDiv.style.display = 'block';
+                    if (btnMP) {
+                        btnMP.href = data.init_point;
+                    }
+                    console.log('Mercado Pago inicializado com sucesso. Redirecionamento configurado.');
+                } else {
+                    // Modo Simulador (Fallback ou sinalização explícita)
+                    if (tabsBar) tabsBar.style.display = 'flex';
+                    if (methodPix) methodPix.style.display = 'block'; // Padrão Pix ativo
+                    console.log('Modo simulador ativo para checkout (chaves não configuradas no Vercel).');
+                }
+            } catch (error) {
+                console.warn('Erro ao conectar com API de Checkout, usando simulador local:', error);
+                if (loadingDiv) loadingDiv.style.display = 'none';
+                if (tabsBar) tabsBar.style.display = 'flex';
+                if (methodPix) methodPix.style.display = 'block'; // Padrão Pix ativo
+            }
         }
     };
 
@@ -2415,6 +2643,44 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     };
 
+    // Extrai odds reais da ESPN se existirem (e converte do formato americano para decimal)
+    const extractRealOdds = (summaryData) => {
+        if (!summaryData) return null;
+        
+        let oddObj = null;
+        if (summaryData.odds && summaryData.odds.length > 0) {
+            oddObj = summaryData.odds.find(o => o.provider && o.provider.name !== 'DraftKings' && o.homeTeamOdds) || summaryData.odds[0];
+        } else if (summaryData.pickcenter && summaryData.pickcenter.length > 0) {
+            oddObj = summaryData.pickcenter.find(p => p.homeTeamOdds) || summaryData.pickcenter[0];
+        }
+        
+        if (!oddObj) return null;
+        
+        const homeOdds = oddObj.homeTeamOdds?.moneyLine;
+        const awayOdds = oddObj.awayTeamOdds?.moneyLine;
+        const drawOdds = oddObj.drawOdds?.moneyLine;
+        
+        if (homeOdds === undefined || awayOdds === undefined || drawOdds === undefined) return null;
+        
+        const toDecimal = (american) => {
+            if (american === null || american === undefined) return 2.0;
+            const val = parseFloat(american);
+            if (val > 0) {
+                return (1 + val / 100).toFixed(2);
+            } else if (val < 0) {
+                return (1 + 100 / Math.abs(val)).toFixed(2);
+            }
+            return 2.0;
+        };
+        
+        return {
+            home: toDecimal(homeOdds),
+            draw: toDecimal(drawOdds),
+            away: toDecimal(awayOdds),
+            provider: oddObj.provider?.name || 'DraftKings'
+        };
+    };
+
     // Renderiza os conteúdos específicos dentro dos painéis de sub-aba
     const renderMatchTabContent = (tabName, game) => {
         const panelPre = document.getElementById('match-panel-pre-jogo');
@@ -2425,6 +2691,56 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!panelPre || !panelOdds || !panelDicas || !panelMarkets) return;
 
         const isLive = game.status === 'aovivo';
+
+        // Extrai odds reais da API ESPN se disponíveis (convertendo de americano para decimal), senão usa a simulated do próprio jogo
+        let oddsObj = { home: game.odds.home, draw: game.odds.draw, away: game.odds.away, provider: '1XBET (Simulado)' };
+        const realOdds = extractRealOdds(state.activeMatchSummary);
+        if (realOdds) {
+            oddsObj.home = realOdds.home;
+            oddsObj.draw = realOdds.draw;
+            oddsObj.away = realOdds.away;
+            oddsObj.provider = realOdds.provider;
+        }
+
+        // Calcula odds ao vivo se o jogo estiver acontecendo de forma compartilhada
+        let odd1Live = "2.10", oddXLive = "3.10", odd2Live = "3.20";
+        let nextGoalHome = "1.85", nextGoalNone = "4.00", nextGoalAway = "2.50";
+        let liveOportunityMsg = "";
+
+        if (isLive && liveStats) {
+            const baseH = Number(oddsObj.home);
+            const baseD = Number(oddsObj.draw);
+            const baseA = Number(oddsObj.away);
+
+            const decayFactor = Math.max(0.1, (90 - liveStats.minute) / 90);
+            
+            if (liveStats.scoreHome > liveStats.scoreAway) {
+                odd1Live = (1.02 + (baseH - 1.0) * 0.1 * decayFactor).toFixed(2);
+                oddXLive = (baseD * 1.5 + 3.0 / decayFactor).toFixed(2);
+                odd2Live = (baseA * 2.0 + 10.0 / decayFactor).toFixed(2);
+            } else if (liveStats.scoreAway > liveStats.scoreHome) {
+                odd1Live = (baseH * 2.0 + 10.0 / decayFactor).toFixed(2);
+                oddXLive = (baseD * 1.5 + 3.0 / decayFactor).toFixed(2);
+                odd2Live = (1.02 + (baseA - 1.0) * 0.1 * decayFactor).toFixed(2);
+            } else {
+                odd1Live = (baseH * 1.2 + 0.8 / decayFactor).toFixed(2);
+                oddXLive = (baseD * 0.8 + 0.5 * decayFactor).toFixed(2);
+                odd2Live = (baseA * 1.2 + 1.0 / decayFactor).toFixed(2);
+            }
+
+            // Cotações do mercado de Próximo Gol
+            nextGoalHome = (1.75 + (1.2 * (1 - decayFactor))).toFixed(2);
+            nextGoalNone = (1.50 + (4.0 * decayFactor)).toFixed(2);
+            nextGoalAway = (2.40 + (1.5 * (1 - decayFactor))).toFixed(2);
+
+            // Oportunidades Ao Vivo estimadas pelo Decipro
+            const seedVal = liveStats.minute + liveStats.scoreHome;
+            if (seedVal % 2 === 0) {
+                liveOportunityMsg = `⚡ <strong>Valor Detectado:</strong> Próximo Gol do Mandante @ ${nextGoalHome} na Betano. O mandante está com **${liveStats.posseHome}%** de posse e pressionando nos últimos minutos. A odd justa estimada é de ${(nextGoalHome * 0.88).toFixed(2)}.`;
+            } else {
+                liveOportunityMsg = `⚡ <strong>Valor Detectado:</strong> Menos de 1.5 Gols na Partida @ ${(1.55 + 0.3 * decayFactor).toFixed(2)} na Bet365. Jogo muito preso no meio-camp com média de faltas acumuladas de ${(liveStats.faltasHome + liveStats.faltasAway)}.`;
+            }
+        }
 
         // --- SUB-ABA 1: PRÉ-JOGO ou AO VIVO ---
         if (tabName === 'pre-jogo') {
@@ -2452,23 +2768,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 const offTargetHome = Math.max(0, liveStats.finalizacoesHome - liveStats.noGolHome);
                 const offTargetAway = Math.max(0, liveStats.finalizacoesAway - liveStats.noGolAway);
                 const ratioOffTarget = Math.round((offTargetHome / (offTargetHome + offTargetAway || 1)) * 100) || 50;
-
-                // Odds Ao Vivo
-                const decayFactor = Math.max(0.1, (90 - liveStats.minute) / 90);
-                let odd1Live = 2.10, oddXLive = 3.10, odd2Live = 3.20;
-                if (liveStats.scoreHome > liveStats.scoreAway) {
-                    odd1Live = (1.05 + 0.2 * decayFactor).toFixed(2);
-                    oddXLive = (3.0 + 3.0 / decayFactor).toFixed(2);
-                    odd2Live = (6.0 + 10.0 / decayFactor).toFixed(2);
-                } else if (liveStats.scoreAway > liveStats.scoreHome) {
-                    odd1Live = (6.0 + 10.0 / decayFactor).toFixed(2);
-                    oddXLive = (3.0 + 3.0 / decayFactor).toFixed(2);
-                    odd2Live = (1.05 + 0.2 * decayFactor).toFixed(2);
-                } else {
-                    odd1Live = (1.80 + 1.5 / decayFactor).toFixed(2);
-                    oddXLive = (1.50 + 1.2 * decayFactor).toFixed(2);
-                    odd2Live = (2.20 + 2.0 / decayFactor).toFixed(2);
-                }
 
                 panelPre.innerHTML = `
                     <!-- Estatísticas Principais com Gráficos Circulares (Donuts) -->
@@ -2627,7 +2926,40 @@ document.addEventListener('DOMContentLoaded', () => {
             } else {
                 // Layout Pré-Jogo com Tabela de Classificação, Médias de Histórico e Árbitro
                 const standings = getLeagueStandings(game.leagueName, game.home.name, game.away.name);
-                const refData = getRefereeData(game.leagueName);
+                const refDataFallback = getRefereeData(game.leagueName);
+                
+                let refData = {
+                    name: refDataFallback.name,
+                    style: refDataFallback.style,
+                    cards: refDataFallback.cards,
+                    fouls: refDataFallback.fouls,
+                    desc: refDataFallback.desc
+                };
+
+                if (state.activeMatchSummary && state.activeMatchSummary.gameInfo && state.activeMatchSummary.gameInfo.officials) {
+                    const officials = state.activeMatchSummary.gameInfo.officials;
+                    const ref = officials.find(o => o.position && o.position.name === 'Referee') || officials[0];
+                    if (ref) {
+                        refData.name = ref.displayName || ref.fullName;
+                        const len = refData.name.length;
+                        if (len % 3 === 0) {
+                            refData.style = 'Extremamente Rígido';
+                            refData.cards = '5.8';
+                            refData.fouls = '31.2';
+                            refData.desc = 'Arbitragem com rigor severo. Costuma marcar qualquer contato físico leve e distribui cartões amarelos rapidamente para conter o andamento do jogo. Excelente cenário para Over de Cartões.';
+                        } else if (len % 3 === 1) {
+                            refData.style = 'Rigoroso';
+                            refData.cards = '4.9';
+                            refData.fouls = '26.4';
+                            refData.desc = 'Arbitragem muito metódica. Tende a marcar muitas faltas táticas de contenção e pune rapidamente reclamações ou agressividade desmedida com cartões.';
+                        } else {
+                            refData.style = 'Moderado';
+                            refData.cards = '4.2';
+                            refData.fouls = '23.8';
+                            refData.desc = 'Árbitro de padrão internacional de elite. Mantém o controle psicológico da partida sem a necessidade de inflar os cartões amarelos precocemente.';
+                        }
+                    }
+                }
 
                 // Médias Históricas Computadas deterministicamente baseadas no nome
                 const teamSeed = game.name.length;
@@ -2757,39 +3089,6 @@ document.addEventListener('DOMContentLoaded', () => {
         // --- SUB-ABA 2: ODDS ou ODDS AO VIVO ---
         else if (tabName === 'odds') {
             if (isLive && liveStats) {
-                // Flutuação das odds ao vivo baseadas no minuto e no placar atual
-                const decayFactor = Math.max(0.1, (90 - liveStats.minute) / 90);
-                
-                // Cotações baseadas no placar ao vivo
-                let odd1Live = 2.10, oddXLive = 3.10, odd2Live = 3.20;
-                if (liveStats.scoreHome > liveStats.scoreAway) {
-                    odd1Live = (1.05 + 0.2 * decayFactor).toFixed(2);
-                    oddXLive = (3.0 + 3.0 / decayFactor).toFixed(2);
-                    odd2Live = (6.0 + 10.0 / decayFactor).toFixed(2);
-                } else if (liveStats.scoreAway > liveStats.scoreHome) {
-                    odd1Live = (6.0 + 10.0 / decayFactor).toFixed(2);
-                    oddXLive = (3.0 + 3.0 / decayFactor).toFixed(2);
-                    odd2Live = (1.05 + 0.2 * decayFactor).toFixed(2);
-                } else {
-                    odd1Live = (1.80 + 1.5 / decayFactor).toFixed(2);
-                    oddXLive = (1.50 + 1.2 * decayFactor).toFixed(2);
-                    odd2Live = (2.20 + 2.0 / decayFactor).toFixed(2);
-                }
-
-                // Cotações do mercado de Próximo Gol
-                const nextGoalHome = (1.75 + (1.2 * (1 - decayFactor))).toFixed(2);
-                const nextGoalNone = (1.50 + (4.0 * decayFactor)).toFixed(2);
-                const nextGoalAway = (2.40 + (1.5 * (1 - decayFactor))).toFixed(2);
-
-                // Oportunidades Ao Vivo estimadas pelo Decipro
-                let liveOportunityMsg = '';
-                const seedVal = liveStats.minute + liveStats.scoreHome;
-                if (seedVal % 2 === 0) {
-                    liveOportunityMsg = `⚡ <strong>Valor Detectado:</strong> Próximo Gol do Mandante @ ${nextGoalHome} na Betano. O mandante está com **${liveStats.posseHome}%** de posse e pressionando nos últimos minutos. A odd justa estimada é de ${(nextGoalHome * 0.88).toFixed(2)}.`;
-                } else {
-                    liveOportunityMsg = `⚡ <strong>Valor Detectado:</strong> Menos de 1.5 Gols na Partida @ ${(1.55 + 0.3 * decayFactor).toFixed(2)} na Bet365. Jogo muito preso no meio-campo com média de faltas acumuladas de ${(liveStats.faltasHome + liveStats.faltasAway)}.`;
-                }
-
                 panelOdds.innerHTML = `
                     <div class="glass-card">
                         <h3 style="margin-bottom: 20px; font-family: 'Outfit'; font-size: 16px;">Comparativo de Odds em Tempo Real (Flutuação Ao Vivo)</h3>
@@ -2841,9 +3140,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             } else {
                 // Comparação de Odds Pré-Jogo
-                const oH = Number(game.odds.home);
-                const oD = Number(game.odds.draw);
-                const oA = Number(game.odds.away);
+                const oH = Number(oddsObj.home);
+                const oD = Number(oddsObj.draw);
+                const oA = Number(oddsObj.away);
 
                 // Cotações ligeiramente alteradas por casa para simular comparação
                 const b365 = { h: oH, d: (oD - 0.05).toFixed(2), a: (oA + 0.05).toFixed(2) };
@@ -2974,9 +3273,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 `;
             } else {
                 // Dicas e probabilidades matemáticas Pré-Jogo
-                const oH = Number(game.odds.home);
-                const oD = Number(game.odds.draw);
-                const oA = Number(game.odds.away);
+                const oH = Number(oddsObj.home);
+                const oD = Number(oddsObj.draw);
+                const oA = Number(oddsObj.away);
                 const margin = (1/oH) + (1/oD) + (1/oA);
                 
                 // Converte as odds em percentuais justos aproximados
@@ -4153,6 +4452,97 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
+    // --- FUNÇÕES DE SINCRONIZAÇÃO SUPABASE & MERCADO PAGO ---
+
+    const syncCurrentUserProfile = async () => {
+        if (state.loggedIn && state.currentUser && window.DeciproDB && window.DeciproDB.getClient()) {
+            try {
+                const client = window.DeciproDB.getClient();
+                const { data: profile, error } = await client
+                    .from('perfis')
+                    .select('*')
+                    .eq('email', state.currentUser.email)
+                    .maybeSingle();
+                
+                if (profile && !error) {
+                    state.subscription = {
+                        plan: profile.plano || 'free',
+                        active: !!profile.assinatura_ativa,
+                        expires: profile.assinatura_validade ? new Date(profile.assinatura_validade).toLocaleDateString('pt-BR') : '-'
+                    };
+                    state.currentUser.role = profile.role || 'cliente';
+                    saveState();
+                    renderPlanosTab();
+                    updateNavigationVisibility();
+                    renderAdminTab();
+                }
+            } catch (e) {
+                console.warn("Erro ao sincronizar perfil em segundo plano:", e);
+            }
+        }
+    };
+
+    const checkPaymentUrlParams = () => {
+        const urlParams = new URLSearchParams(window.location.search || window.location.hash.split('?')[1]);
+        const status = urlParams.get('status');
+        if (status) {
+            // Remove o parâmetro da URL para evitar alertas repetidos ao recarregar
+            const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname + window.location.hash.split('?')[0];
+            window.history.replaceState({path: cleanUrl}, '', cleanUrl);
+
+            if (status === 'success') {
+                alert("🎉 Pagamento processado! Sua assinatura Pro está sendo ativada. Em alguns instantes o acesso será liberado.");
+                setTimeout(syncCurrentUserProfile, 2000);
+            } else if (status === 'pending') {
+                alert("⏳ Pagamento pendente. Assim que for confirmado, sua assinatura Pro será liberada.");
+            } else if (status === 'failure') {
+                alert("❌ O pagamento não foi concluído. Se houve algum problema, tente novamente.");
+            }
+        }
+    };
+
+    const saveBancaToDb = async (banca) => {
+        if (window.DeciproDB && window.DeciproDB.getClient()) {
+            try {
+                const result = await window.DeciproDB.bancas.salvar(banca);
+                if (result) {
+                    if (banca.id.startsWith('banca_')) {
+                        const idx = state.bancas.findIndex(b => b.id === banca.id);
+                        if (idx !== -1) {
+                            state.bancas[idx].id = result.id;
+                            if (state.activeBancaId === banca.id) {
+                                state.activeBancaId = result.id;
+                            }
+                            state.simulations.forEach(s => {
+                                if (s.bancaId === banca.id) s.bancaId = result.id;
+                            });
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Erro ao salvar banca no Supabase:", e);
+            }
+        }
+    };
+
+    const saveSimToDb = async (sim) => {
+        if (window.DeciproDB && window.DeciproDB.getClient()) {
+            try {
+                const result = await window.DeciproDB.simulacoes.salvar(sim);
+                if (result) {
+                    if (sim.id.startsWith('sim_')) {
+                        const idx = state.simulations.findIndex(s => s.id === sim.id);
+                        if (idx !== -1) {
+                            state.simulations[idx].id = result.id;
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn("Erro ao salvar simulação no Supabase:", e);
+            }
+        }
+    };
+
     // --- INICIALIZAÇÃO DO APP ---
 
     // Inicializa a exibição de bancas ao carregar a página e pré-seleciona a ativa no formulário
@@ -4175,6 +4565,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Executa verificação inicial de resoluções de jogos terminados
     autoResolveFinishedGames();
+
+    // Inicialização do Supabase se disponível
+    if (window.DeciproDB) {
+        window.DeciproDB.init().then(() => {
+            console.log("DeciproDB (Supabase) inicializado com sucesso.");
+            syncCurrentUserProfile();
+            checkPaymentUrlParams();
+        }).catch(e => {
+            console.warn("Falha ao inicializar o DeciproDB:", e);
+            checkPaymentUrlParams();
+        });
+    } else {
+        checkPaymentUrlParams();
+    }
 
     // Ajuste de aba inicial baseada no login
     if (!state.loggedIn) {

@@ -197,5 +197,7 @@ window.DeciproDB = {
     init: initSupabase,
     auth: dbAuth,
     bancas: dbBancas,
-    simulacoes: dbSimulacoes
+    simulacoes: dbSimulacoes,
+    getClient: () => supabaseClient
 };
+

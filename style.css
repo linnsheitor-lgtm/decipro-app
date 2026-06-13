@@ -923,13 +923,30 @@ body {
     color: var(--text-main);
 }
 
-/* Estilo para estrela de favorito na partida */
+/* Estilo para estrela de favorito na partida (Selecionados) */
 .match-fav-icon svg {
-    stroke: var(--text-muted);
+    stroke: #fbbf24;
+    fill: none;
+    opacity: 0.55;
+    transition: all 0.25s ease;
 }
 
 .match-fav-icon:hover svg {
-    stroke: var(--text-main);
+    stroke: #fbbf24;
+    opacity: 1;
+}
+
+.match-fav-icon.active svg {
+    stroke: #fbbf24;
+    fill: #fbbf24;
+    opacity: 1;
+}
+
+/* Indicador de Jogo Selecionado na Pesquisa */
+.match-row.selected-match {
+    background: rgba(59, 130, 246, 0.09) !important;
+    border-left: 4px solid var(--primary);
+    padding-left: 16px;
 }
 
 /* Aba 4: Análise */
@@ -1552,4 +1569,20 @@ input:checked + .slider:before {
     transform: translateY(-2px);
     box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
 }
+
+/* Spinner Animation for Checkout Loading */
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.1);
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border-left-color: var(--primary);
+    animation: spin 1s linear infinite;
+    margin: 0 auto 16px auto;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
 
