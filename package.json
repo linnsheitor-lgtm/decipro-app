@@ -1,0 +1,34 @@
+{
+  "name": "decipro",
+  "version": "1.0.0",
+  "description": "Decipro - Gestão de Banca e Análise Esportiva",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": [
+    "sports-betting",
+    "bankroll-management",
+    "decipro"
+  ],
+  "author": "Decipro Team",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.0"
+  },
+  "build": {
+    "appId": "com.decipro.app",
+    "productName": "Decipro",
+    "directories": {
+      "output": "dist"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "mac": {
+      "target": "dmg"
+    }
+  }
+}
