@@ -9,10 +9,29 @@ const SUPABASE_ANON_KEY = "SUA_SUPABASE_ANON_KEY_AQUI";
 let supabaseClient = null;
 
 // Inicializa o cliente do Supabase
-function initSupabase() {
+async function initSupabase() {
     if (typeof supabase !== 'undefined') {
-        supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        console.log("Supabase inicializado com sucesso!");
+        let url = SUPABASE_URL;
+        let key = SUPABASE_ANON_KEY;
+
+        // Se as chaves estiverem com o placeholder padrão, busca da rota serverless do Vercel
+        if (url === "SUA_SUPABASE_URL_AQUI" || url === "") {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                url = config.supabaseUrl;
+                key = config.supabaseAnonKey;
+            } catch (e) {
+                console.warn("Não foi possível carregar as credenciais da API Vercel:", e);
+            }
+        }
+
+        if (url && key && url !== "SUA_SUPABASE_URL_AQUI") {
+            supabaseClient = supabase.createClient(url, key);
+            console.log("Supabase inicializado com sucesso!");
+        } else {
+            console.warn("Supabase não inicializado. Configure as chaves no arquivo supabase.js ou na Vercel.");
+        }
     } else {
         console.warn("Script do Supabase JS não carregado no index.html.");
     }

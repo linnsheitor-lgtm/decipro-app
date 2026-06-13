@@ -17,6 +17,8 @@ document.addEventListener('DOMContentLoaded', () => {
             { id: 'mock_5', partida: 'Boca Juniors vs River Plate', mercado: 'Ambos Marcam: Sim', odds: 1.75, valor: 200, status: 'WIN', retorno: 150, data: '12/06/2026', bancaId: 'banca_1' }
         ],
         subscription: JSON.parse(localStorage.getItem('decipro_subscription')) || { plan: 'free', active: false, expires: '-' },
+        loggedIn: JSON.parse(localStorage.getItem('decipro_logged_in')) || false,
+        currentUser: JSON.parse(localStorage.getItem('decipro_current_user')) || null,
         adminUsers: JSON.parse(localStorage.getItem('decipro_admin_users')) || [
             { id: 'usr_1', nome: 'Carlos Silva', email: 'carlos@email.com', plano: 'anual', banca: 6240.00, ativo: true, data: '10/06/2026' },
             { id: 'usr_2', nome: 'Mariana Souza', email: 'mariana@email.com', plano: 'mensal', banca: 3150.00, ativo: true, data: '11/06/2026' },
@@ -41,6 +43,8 @@ document.addEventListener('DOMContentLoaded', () => {
         localStorage.setItem('decipro_active_match_summary', JSON.stringify(state.activeMatchSummary));
         localStorage.setItem('decipro_simulations', JSON.stringify(state.simulations));
         localStorage.setItem('decipro_subscription', JSON.stringify(state.subscription));
+        localStorage.setItem('decipro_logged_in', JSON.stringify(state.loggedIn));
+        localStorage.setItem('decipro_current_user', JSON.stringify(state.currentUser));
         localStorage.setItem('decipro_admin_users', JSON.stringify(state.adminUsers));
     };
 
@@ -53,16 +57,63 @@ document.addEventListener('DOMContentLoaded', () => {
     const navLinks = document.querySelectorAll('.nav-link');
     const tabPanels = document.querySelectorAll('.tab-panel');
 
+    // Controla a visibilidade das abas com base no login e papel do usuário
+    const updateNavigationVisibility = () => {
+        const navItems = document.querySelectorAll('.nav-menu .nav-item');
+        
+        navItems.forEach(item => {
+            const link = item.querySelector('.nav-link');
+            if (!link) return;
+            
+            const tab = link.getAttribute('data-tab');
+            
+            if (!state.loggedIn) {
+                // Deslogado: mostra apenas Entrada e Planos
+                if (tab === 'entrada' || tab === 'planos') {
+                    item.style.display = 'block';
+                } else {
+                    item.style.display = 'none';
+                }
+            } else {
+                // Logado
+                if (tab === 'entrada') {
+                    // Oculta a aba de Entrada se o usuário já estiver logado
+                    item.style.display = 'none';
+                } else if (tab === 'admin') {
+                    // Apenas exibe o menu Admin se o usuário logado for 'admin'
+                    if (state.currentUser && state.currentUser.role === 'admin') {
+                        item.style.display = 'block';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                } else {
+                    // Mostra as demais abas funcionais e Logout
+                    item.style.display = 'block';
+                }
+            }
+        });
+    };
+
     navLinks.forEach(link => {
         link.addEventListener('click', (e) => {
             e.preventDefault();
+            
+            const targetTab = link.getAttribute('data-tab');
+            if (!targetTab) return; // Evita processar abas sem identificador (ex: logout)
+            
+            // Restrição de acesso: se não estiver logado, só permite Entrada e Planos (para visualizar mensalidades)
+            if (!state.loggedIn && targetTab !== 'entrada' && targetTab !== 'planos') {
+                alert('⚠️ Acesso restrito! Por favor, faça login ou crie uma conta para liberar o painel Decipro.');
+                const navEntrada = document.querySelector('[data-tab="entrada"]');
+                if (navEntrada) navEntrada.click();
+                return;
+            }
             
             navLinks.forEach(item => item.classList.remove('active'));
             tabPanels.forEach(panel => panel.classList.remove('active'));
             
             link.classList.add('active');
             
-            const targetTab = link.getAttribute('data-tab');
             const targetPanel = document.getElementById(`panel-${targetTab}`);
             if (targetPanel) {
                 targetPanel.classList.add('active');
@@ -89,18 +140,167 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Chama na inicialização para ajustar os links visíveis
+    updateNavigationVisibility();
+
     // --- ABA 1: ENTRADA (ACESSO) ---
     const loginForm = document.getElementById('login-form');
+    const signupForm = document.getElementById('signup-form');
     const btnGoogleLogin = document.getElementById('btn-google-login');
+    const btnLogout = document.getElementById('btn-logout');
+    const toggleAuthModeBtn = document.getElementById('toggle-auth-mode');
+    const authAlternativeWrapper = document.getElementById('auth-alternative-wrapper');
+    const authTitle = document.getElementById('auth-title');
+    const authSubtitle = document.getElementById('auth-subtitle');
+    const authTabLogin = document.getElementById('auth-tab-login');
+    const authTabRegister = document.getElementById('auth-tab-register');
 
-    const handleLoginSuccess = () => {
-        alert('Simulação de login realizada com sucesso!');
-        const navBanca = document.querySelector('[data-tab="banca"]');
-        if (navBanca) navBanca.click();
+    let isLoginMode = true;
+
+    // Função para alternar de forma centralizada entre os modos Login e Registro
+    const switchAuthMode = (toLogin) => {
+        isLoginMode = toLogin;
+        
+        if (isLoginMode) {
+            if (loginForm) loginForm.style.display = 'block';
+            if (signupForm) signupForm.style.display = 'none';
+            if (authAlternativeWrapper) authAlternativeWrapper.style.display = 'block';
+            if (authTitle) authTitle.textContent = 'Bem-vindo de volta';
+            if (authSubtitle) authSubtitle.textContent = 'Escolha sua forma de acesso';
+            if (toggleAuthModeBtn) toggleAuthModeBtn.textContent = 'Não tem conta? Cadastre-se';
+            
+            if (authTabLogin) {
+                authTabLogin.classList.add('active');
+                authTabLogin.style.borderBottom = '3px solid var(--primary)';
+                authTabLogin.style.color = 'var(--text-main)';
+            }
+            if (authTabRegister) {
+                authTabRegister.classList.remove('active');
+                authTabRegister.style.borderBottom = 'none';
+                authTabRegister.style.color = 'var(--text-muted)';
+            }
+        } else {
+            if (loginForm) loginForm.style.display = 'none';
+            if (signupForm) signupForm.style.display = 'block';
+            if (authAlternativeWrapper) authAlternativeWrapper.style.display = 'none';
+            if (authTitle) authTitle.textContent = 'Criar Nova Conta';
+            if (authSubtitle) authSubtitle.textContent = 'Cadastre-se para liberar o painel Decipro';
+            if (toggleAuthModeBtn) toggleAuthModeBtn.textContent = 'Já tem conta? Entrar';
+            
+            if (authTabRegister) {
+                authTabRegister.classList.add('active');
+                authTabRegister.style.borderBottom = '3px solid var(--primary)';
+                authTabRegister.style.color = 'var(--text-main)';
+            }
+            if (authTabLogin) {
+                authTabLogin.classList.remove('active');
+                authTabLogin.style.borderBottom = 'none';
+                authTabLogin.style.color = 'var(--text-muted)';
+            }
+        }
     };
 
-    if (loginForm) loginForm.addEventListener('submit', (e) => { e.preventDefault(); handleLoginSuccess(); });
-    if (btnGoogleLogin) btnGoogleLogin.addEventListener('click', handleLoginSuccess);
+    if (authTabLogin) {
+        authTabLogin.addEventListener('click', () => switchAuthMode(true));
+    }
+    if (authTabRegister) {
+        authTabRegister.addEventListener('click', () => switchAuthMode(false));
+    }
+
+    // Alterna entre formulário de Login e Registro via link do rodapé
+    if (toggleAuthModeBtn) {
+        toggleAuthModeBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchAuthMode(!isLoginMode);
+        });
+    }
+
+    // Processamento de Login
+    if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const email = document.getElementById('login-email').value.trim();
+            
+            // Simulação de login: email 'admin@decipro.com' vira admin, outros viram cliente
+            state.loggedIn = true;
+            state.currentUser = {
+                nome: email.split('@')[0].toUpperCase(),
+                email: email,
+                role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
+            };
+            saveState();
+            updateNavigationVisibility();
+
+            alert(`Simulação de login realizada com sucesso! Bem-vindo, ${state.currentUser.nome}.`);
+            
+            const navBanca = document.querySelector('[data-tab="banca"]');
+            if (navBanca) navBanca.click();
+        });
+    }
+
+    // Processamento de Registro (Cadastro)
+    if (signupForm) {
+        signupForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const nome = document.getElementById('signup-name').value.trim();
+            const email = document.getElementById('signup-email').value.trim();
+            
+            state.loggedIn = true;
+            state.currentUser = {
+                nome: nome,
+                email: email,
+                role: email === 'admin@decipro.com' ? 'admin' : 'cliente'
+            };
+            saveState();
+            updateNavigationVisibility();
+
+            alert(`🎉 Conta criada com sucesso! Bem-vindo, ${nome}.`);
+            
+            const navBanca = document.querySelector('[data-tab="banca"]');
+            if (navBanca) navBanca.click();
+        });
+    }
+
+    // Processamento de Login com o Google
+    if (btnGoogleLogin) {
+        btnGoogleLogin.addEventListener('click', () => {
+            state.loggedIn = true;
+            state.currentUser = {
+                nome: 'USUÁRIO GOOGLE',
+                email: 'google@decipro.com',
+                role: 'cliente'
+            };
+            saveState();
+            updateNavigationVisibility();
+            
+            alert('Acesso via Google simulado com sucesso!');
+            const navBanca = document.querySelector('[data-tab="banca"]');
+            if (navBanca) navBanca.click();
+        });
+    }
+
+    // Processamento de Logout (Sair)
+    if (btnLogout) {
+        btnLogout.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (confirm('Tem certeza de que deseja sair da sua conta?')) {
+                state.loggedIn = false;
+                state.currentUser = null;
+                saveState();
+                
+                // Reseta o formulário de login para o modo "Entrar"
+                switchAuthMode(true);
+                
+                updateNavigationVisibility();
+                
+                alert('Você saiu da sua conta.');
+                
+                // Recarrega no painel de Entrada
+                const navEntrada = document.querySelector('[data-tab="entrada"]');
+                if (navEntrada) navEntrada.click();
+            }
+        });
+    }
 
 
     // --- ABA 2: CADASTRAMENTO E ESTUDO DE BANCA ---
@@ -521,8 +721,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const LEAGUES = [
         { id: 'bra.1', name: 'Brasil Série A', flag: '🇧🇷' },
         { id: 'bra.2', name: 'Brasil Série B', flag: '🇧🇷' },
+        { id: 'bra.3', name: 'Brasil Série C', flag: '🇧🇷' },
+        { id: 'bra.4', name: 'Brasil Série D', flag: '🇧🇷' },
         { id: 'eng.1', name: 'Inglaterra Premier League', flag: '🇬🇧' },
         { id: 'esp.1', name: 'Espanha La Liga', flag: '🇪🇸' },
+        { id: 'ita.1', name: 'Itália Serie A', flag: '🇮🇹' },
+        { id: 'fra.1', name: 'França Ligue 1', flag: '🇫🇷' },
+        { id: 'por.1', name: 'Portugal Primeira Liga', flag: '🇵🇹' },
+        { id: 'ned.1', name: 'Holanda Eredivisie', flag: '🇳🇱' },
+        { id: 'arg.1', name: 'Argentina Primera División', flag: '🇦🇷' },
+        { id: 'col.1', name: 'Colômbia Primera A', flag: '🇨🇴' },
+        { id: 'mex.1', name: 'México Liga MX', flag: '🇲🇽' },
         { id: 'uefa.champions', name: 'Champions League', flag: '🇪🇺' },
         { id: 'fifa.world', name: 'Mundo / Copa / Amistosos', flag: '🌐' }
     ];
@@ -1520,6 +1729,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Abre a área de checkout para o plano selecionado
     window.abrirCheckout = (planType) => {
+        if (!state.loggedIn) {
+            alert('⚠️ Para assinar um plano, por favor crie sua conta primeiro!');
+            
+            // Alterna para o modo de registro
+            switchAuthMode(false);
+            
+            // Direciona para a aba de Entrada (Login/Registro)
+            const navEntrada = document.querySelector('[data-tab="entrada"]');
+            if (navEntrada) {
+                navLinks.forEach(item => item.classList.remove('active'));
+                tabPanels.forEach(panel => panel.classList.remove('active'));
+                
+                navEntrada.classList.add('active');
+                const targetPanel = document.getElementById('panel-entrada');
+                if (targetPanel) targetPanel.classList.add('active');
+            }
+            
+            // Foca no campo Nome Completo do cadastro
+            const signupName = document.getElementById('signup-name');
+            if (signupName) {
+                signupName.scrollIntoView({ behavior: 'smooth' });
+                signupName.focus();
+            }
+            return;
+        }
+
         selectedPlanForCheckout = planType;
         const checkoutCard = document.getElementById('checkout-card');
         const checkoutTitle = document.getElementById('checkout-title');
@@ -3918,8 +4153,6 @@ document.addEventListener('DOMContentLoaded', () => {
         `;
     };
 
-
-
     // --- INICIALIZAÇÃO DO APP ---
 
     // Inicializa a exibição de bancas ao carregar a página e pré-seleciona a ativa no formulário
@@ -3942,4 +4175,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Executa verificação inicial de resoluções de jogos terminados
     autoResolveFinishedGames();
+
+    // Ajuste de aba inicial baseada no login
+    if (!state.loggedIn) {
+        const navEntrada = document.querySelector('[data-tab="entrada"]');
+        if (navEntrada) navEntrada.click();
+    } else {
+        const navBanca = document.querySelector('[data-tab="banca"]');
+        if (navBanca) navBanca.click();
+    }
 });
